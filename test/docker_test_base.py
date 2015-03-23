@@ -226,7 +226,7 @@ class DockerTest(object):
         test_files = {}
         passed = True
 
-        for root, dirs, files in os.walk(self.git_repo_path):
+        for root, dirs, files in os.walk(os.getcwd()):
             for filename in fnmatch.filter(files, self.test_file_pattern):
                 test_file =  os.path.join(root, filename)
                 test_module = imp.load_source("", test_file)
@@ -235,18 +235,19 @@ class DockerTest(object):
                                               logger=None)
                 test_class.setup()
                 for test in test_class.tests:
-                    test_name = test.__func__.__name__
-                    self._log("starting test '%s'" % test_name, logging.INFO)
-                    try:
-                        test_result = test(test_class)
-                    except Exception as ex:
-                        results[test_name] = traceback.format_exc()
-                        passed = False
-                    else:
-                        results[test_name] = test_result
-                        if test_result is False:
+                    if ( "all" in self.tests or test_class.tag in self.tests):
+                        test_name = test.__func__.__name__
+                        self._log("starting test '%s'" % test_name, logging.INFO)
+                        try:
+                            test_result = test(test_class)
+                        except Exception as ex:
+                            results[test_name] = traceback.format_exc()
                             passed = False
-                            self._log("test result: '%s'" % results[test_name], logging.INFO)
+                        else:
+                            results[test_name] = test_result
+                            if test_result is False:
+                                passed = False
+                                self._log("test result: '%s'" % results[test_name], logging.INFO)
                 test_class.teardown()
         self._log("did tests pass? '%s'" % passed, logging.INFO)
         self._generate_xunit_file(results)
