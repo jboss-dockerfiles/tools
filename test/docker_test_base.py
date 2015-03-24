@@ -52,9 +52,13 @@ class DockerTest(object):
         self.image_id = image_id
         self.tests = tests
         self.git_repo_path = git_repo_path
-        self.logger = logger
         self.results_dir = results_dir
         self.kwargs = kwargs
+
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger("dock.middleware")
      
     def _log(self, m, level=logging.INFO):
         """ log using logger, or print to stdout """
