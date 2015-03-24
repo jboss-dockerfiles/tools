@@ -74,7 +74,7 @@ class DockerTest(object):
             if (not result):
                 ET.SubElement(doc, "failure", message="error occured")
         tree = ET.ElementTree(root)
-        self._log("creating results dir: " + self.results_dir )
+        self._log("Creating results dir: " + self.results_dir )
         try:
             os.stat(self.results_dir)
         except:
@@ -83,9 +83,9 @@ class DockerTest(object):
 
     def _start_container(self, image):
         """ Starts a detached container for selected image """
-        self._log("creating container from image '%s'..." % image, logging.DEBUG)
+        self._log("Creating container from image '%s'..." % image, logging.DEBUG)
         container = d.create_container(image=image, detach=True)
-        self._log("starting container '%s'..." % container.get('Id'), logging.DEBUG)
+        self._log("Starting container '%s'..." % container.get('Id'), logging.DEBUG)
         d.start(container=container)
         return container
 
@@ -98,11 +98,59 @@ class DockerTest(object):
             print(d.attach(container=container.get('Id'), stream=False, logs=True), file=f)
         f.closed
         if container:
-            self._log("removing container '%s'" % container['Id'], logging.DEBUG)
+            self._log("Removing container '%s'" % container['Id'], logging.DEBUG)
             d.kill(container=container)
             d.remove_container(container)
         else:
             self._log("no container to tear down", logging.DEBUG)
+
+    def _handle_request(self, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None):
+        """
+        Helper method to determine if the container is listetning on specific port
+        and returning the exected status code. If the 'expected_phrase' parameter
+        is specified, it additionally checks if the response body contains the
+        specified string.
+
+        By default it assumes that we are checking port 80 for return code 200.
+        """
+        self._log("Checking if the container is returning status code %s on port %s" % (expected_status_code, port), logging.INFO)
+
+        success = False
+        start_time = time.time()
+
+        ip = d.inspect_container(container=self.container)['NetworkSettings']['IPAddress']
+        latest_status_code = 0
+
+        while time.time() < start_time + wait:
+            try:
+                response = requests.get('http://%s:%s' % (ip, port), timeout = timeout, stream=False)
+            except Exception as ex:
+                # Logging as warning, bcause this does not neccessarily means
+                # something bad. For example the server did not boot yet.
+                self._log("Exception caught: %s" % repr(ex), logging.WARN)
+            else:
+                latest_status_code = response.status_code
+                self._log("Response code from the container on port %s: %s (expected: %s)" % (port, latest_status_code, expected_status_code), logging.DEBUG)
+                if latest_status_code == expected_status_code:
+                    if not expected_phrase:
+                        # The expected_phrase parameter was not set
+                        success = True
+                        break
+
+                    if expected_phrase in response.text:
+                        # The expected_phrase parameter was found in the body
+                        self._log("Document body contains the '%s' phrase!" % expected_phrase, logging.INFO)
+                        success = True
+                    else:
+                        # The phrase was not found in the response
+                        self._log("Failure! Correct status code received but the document body does not contain the '%s' phrase!" % expected_phrase, logging.ERROR)
+                        self._log("Received body:\n%s" % response.text, logging.DEBUG)
+
+                    break
+
+            time.sleep(1)
+
+        return success
 
     def _expect_message(self, image_or_container, messages):
         """
@@ -213,22 +261,26 @@ class DockerTest(object):
         return None
 
     def setup(self):
-        """ this method is called before every test run """
+        """ This method is called before every test run """
         self.container = self._start_container(self.image_id)
 
     def teardown(self):
-        """ called after every test run """
+        """ Called after every test run """
         self._stop_container(self.container)
         self.container = None
 
     def run(self):
-        """ entry point, run all tests and return results """
+        """ Entry point, run all tests and return results """
         # just hacky to have this module on path
         this_module_path =  os.path.dirname(inspect.getfile(self.__class__))
         sys.path.append(this_module_path)
         results = {}
         test_files = {}
         passed = True
+
+        # Simple stats
+        test_count = 0
+        failed_tests = []
 
         for root, dirs, files in os.walk(os.getcwd()):
             for filename in fnmatch.filter(files, self.test_file_pattern):
@@ -237,11 +289,13 @@ class DockerTest(object):
                 test_class = test_module.run( self.image_id, self.tests,
                                               self.git_repo_path, self.results_dir,
                                               logger=None)
-                if ( "all" in self.tests or test_class.tag in self.tests):
+                if ("all" in self.tests or test_class.tag in self.tests):
                     test_class.setup()
+                    self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
+                    test_count = test_count + len(test_class.tests)
                     for test in test_class.tests:
                         test_name = test.__func__.__name__
-                        self._log("starting test '%s'" % test_name, logging.INFO)
+                        self._log("Running test '%s'" % test_name, logging.INFO)
                         try:
                             test_result = test(test_class)
                         except Exception as ex:
@@ -251,9 +305,16 @@ class DockerTest(object):
                             results[test_name] = test_result
                             if test_result is False:
                                 passed = False
-                                self._log("test result: '%s'" % results[test_name], logging.INFO)
+                                failed_tests.append(test_name)
+                                self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                            else:
+                                self._log("==> Test '%s' passed!" % test_name, logging.INFO)
                     test_class.teardown()
-        self._log("did tests pass? '%s'" % passed, logging.INFO)
+        if passed:
+            self._log("==> Summary: All tests passed!", logging.INFO)
+        else:
+            self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), test_count), logging.ERROR)
+            self._log("Failed tests: %s" % failed_tests, logging.ERROR)
         self._generate_xunit_file(results)
         return results, passed
 
