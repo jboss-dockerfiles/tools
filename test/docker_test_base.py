@@ -237,9 +237,9 @@ class DockerTest(object):
                 test_class = test_module.run( self.image_id, self.tests,
                                               self.git_repo_path, self.results_dir,
                                               logger=None)
-                test_class.setup()
-                for test in test_class.tests:
-                    if ( "all" in self.tests or test_class.tag in self.tests):
+                if ( "all" in self.tests or test_class.tag in self.tests):
+                    test_class.setup()
+                    for test in test_class.tests:
                         test_name = test.__func__.__name__
                         self._log("starting test '%s'" % test_name, logging.INFO)
                         try:
@@ -252,7 +252,7 @@ class DockerTest(object):
                             if test_result is False:
                                 passed = False
                                 self._log("test result: '%s'" % results[test_name], logging.INFO)
-                test_class.teardown()
+                    test_class.teardown()
         self._log("did tests pass? '%s'" % passed, logging.INFO)
         self._generate_xunit_file(results)
         return results, passed
