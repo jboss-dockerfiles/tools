@@ -39,7 +39,9 @@ import subprocess
 import sys
 import time
 import traceback
+import uuid
 import xml.etree.cElementTree as ET
+
 from docker import Client
 
 d = Client()
@@ -319,29 +321,40 @@ class DockerTest(object):
 
                 for filename in test_files:
                     test_file =  os.path.join(root, filename)
-                    test_module = imp.load_source("", test_file)
-                    test_class = test_module.run( self.image_id, self.tests,
-                                                  self.git_repo_path, self.results_dir,
-                                                  logger=None)
+                    module_marker = str(uuid.uuid4())
+                    # Load class to unique namespace
+                    test_module = imp.load_source(module_marker, test_file)
+
+                    # Get all classes from our module
+                    for name, clazz in inspect.getmembers(test_module, inspect.isclass):
+                        # Check that class is from our namespace
+                        if module_marker == clazz.__module__:
+                            # Instantiate class
+                            cls = getattr(test_module, name)
+                            test_class = cls( self.image_id, self.tests,
+                                                       self.git_repo_path, self.results_dir,
+                                                       logger=None)                            
                     test_class.setup()
                     self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
-                    test_count = test_count + len(test_class.tests)
-                    for test in test_class.tests:
-                        test_name = test.__func__.__name__
-                        self._log("Running test '%s'" % test_name, logging.INFO)
-                        try:
-                            test_result = test(test_class)
-                        except Exception as ex:
-                            results[test_name] = traceback.format_exc()
-                            passed = False
-                        else:
-                            results[test_name] = test_result
-                            if test_result is False:
+                    # Loop through all methods from our class
+                    for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
+                        # Take only ones which name starts with "test_"
+                        if test_name.startswith("test_"):
+                            self._log("Running test '%s'" % test_name, logging.INFO)
+                            test_count += 1
+                            try:
+                                test_result =  test()
+                            except Exception as ex:
+                                results[test_name] = traceback.format_exc()
                                 passed = False
-                                failed_tests.append(test_name)
-                                self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
                             else:
-                                self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+                                results[test_name] = test_result
+                                if test_result is False:
+                                    passed = False
+                                    failed_tests.append(test_name)
+                                    self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                                else:
+                                    self._log("==> Test '%s' passed!" % test_name, logging.INFO)
                     test_class.teardown()
 
         if test_count > 0:
