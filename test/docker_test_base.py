@@ -310,11 +310,14 @@ class DockerTest(object):
                             else:
                                 self._log("==> Test '%s' passed!" % test_name, logging.INFO)
                     test_class.teardown()
-        if passed:
-            self._log("==> Summary: All tests passed!", logging.INFO)
-        else:
-            self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), test_count), logging.ERROR)
-            self._log("Failed tests: %s" % failed_tests, logging.ERROR)
+
+        if test_count > 0:
+            if passed:
+                self._log("==> Summary: All tests passed!", logging.INFO)
+            else:
+                self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), test_count), logging.ERROR)
+                self._log("Failed tests: %s" % failed_tests, logging.ERROR)
+
         self._generate_xunit_file(results)
         return results, passed
 
