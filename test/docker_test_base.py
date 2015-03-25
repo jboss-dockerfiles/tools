@@ -282,14 +282,34 @@ class DockerTest(object):
         test_count = 0
         failed_tests = []
 
-        for root, dirs, files in os.walk(os.getcwd()):
-            for filename in fnmatch.filter(files, self.test_file_pattern):
-                test_file =  os.path.join(root, filename)
-                test_module = imp.load_source("", test_file)
-                test_class = test_module.run( self.image_id, self.tests,
-                                              self.git_repo_path, self.results_dir,
-                                              logger=None)
-                if ("all" in self.tests or test_class.tag in self.tests):
+        if self.tests:
+            self._log("Using user provided test location: %s" % self.tests, logging.DEBUG)
+            tests_pattern = self.tests
+        else:
+            self._log("Using default test location: %s" % self.test_file_pattern, logging.DEBUG)
+            tests_pattern = self.test_file_pattern
+
+        directories = []
+
+        for path in tests_pattern.split(','):
+            if os.path.dirname(path):
+                # Pattern with directory
+                directories.append(os.path.dirname(path))
+            else:
+                directories.append(os.getcwd())
+
+        for directory in sorted(set(directories)):
+            for root, dirs, files in os.walk(directory):
+                # Skip the Git directory itself
+                if ".git" in root:
+                    continue
+
+                for filename in fnmatch.filter(files, os.path.basename(tests_pattern)):
+                    test_file =  os.path.join(root, filename)
+                    test_module = imp.load_source("", test_file)
+                    test_class = test_module.run( self.image_id, self.tests,
+                                                  self.git_repo_path, self.results_dir,
+                                                  logger=None)
                     test_class.setup()
                     self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
                     test_count = test_count + len(test_class.tests)
