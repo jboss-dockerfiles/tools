@@ -281,9 +281,7 @@ class DockerTest(object):
                     else:
                         self._log("==> Test '%s' passed!" % test_name, logging.INFO)
         test_class.teardown()
-        return
     
-
     def setup(self):
         """ This method is called before every test run """
         self.container = self._start_container(self.image_id)
