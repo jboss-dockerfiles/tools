@@ -263,7 +263,6 @@ class DockerTest(object):
         return None
 
     def _run_tests_from_class(self, test_class,  results):
-        test_count = 0
         test_class.setup()
         self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
         # Loop through all methods from our class
@@ -271,22 +270,18 @@ class DockerTest(object):
             # Take only ones which name starts with "test_"
             if test_name.startswith("test_"):
                 self._log("Running test '%s'" % test_name, logging.INFO)
-                test_count += 1
                 try:
                     test_result =  test()
                 except Exception as ex:
                     results[test_name] = traceback.format_exc()
-                    passed = False
                 else:
                     results[test_name] = test_result
                     if test_result is False:
-                        passed = False
-                        failed_tests.append(test_name)
                         self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
                     else:
                         self._log("==> Test '%s' passed!" % test_name, logging.INFO)
         test_class.teardown()
-        return test_count
+        return
     
 
     def setup(self):
@@ -304,11 +299,7 @@ class DockerTest(object):
         this_module_path =  os.path.dirname(inspect.getfile(self.__class__))
         sys.path.append(this_module_path)
         results = {}
-        passed = True
 
-        # Simple stats
-        test_count = 0
-        failed_tests = []
         if self.tests:
             self._log("Using user provided test location: %s" % self.tests, logging.DEBUG)
             tests_pattern = self.tests
@@ -341,17 +332,19 @@ class DockerTest(object):
                             test_class = cls( self.image_id, self.tests,
                                               self.git_repo_path, self.results_dir,
                                               logger=None)
-                            test_count += self._run_tests_from_class(test_class, results)
+                            self._run_tests_from_class(test_class, results)
 
-        if test_count > 0:
-            if passed:
+            failed_tests = {k:v for (k,v) in results.items() if results[k] is False}
+            passed_tests = {k:v for (k,v) in results.items() if results[k] is True}
+            if not failed_tests:
                 self._log("==> Summary: All tests passed!", logging.INFO)
             else:
-                self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), test_count), logging.ERROR)
-                self._log("Failed tests: %s" % failed_tests, logging.ERROR)
+                
+                self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
+                self._log("Failed tests: %s" % failed_tests.items(), logging.ERROR)
 
         self._generate_xunit_file(results)
-        return results, passed
+        return results, not bool(failed_tests)
 
 
 
