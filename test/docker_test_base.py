@@ -308,7 +308,7 @@ class DockerTest(object):
 
         # Simple stats
         test_count = 0
-
+        failed_tests = []
         if self.tests:
             self._log("Using user provided test location: %s" % self.tests, logging.DEBUG)
             tests_pattern = self.tests
