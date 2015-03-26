@@ -262,6 +262,33 @@ class DockerTest(object):
         self._log("STI build failed, check logs!" % logging.ERROR)
         return None
 
+    def _run_tests_from_class(self, test_class,  results):
+        test_count = 0
+        test_class.setup()
+        self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
+        # Loop through all methods from our class
+        for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
+            # Take only ones which name starts with "test_"
+            if test_name.startswith("test_"):
+                self._log("Running test '%s'" % test_name, logging.INFO)
+                test_count += 1
+                try:
+                    test_result =  test()
+                except Exception as ex:
+                    results[test_name] = traceback.format_exc()
+                    passed = False
+                else:
+                    results[test_name] = test_result
+                    if test_result is False:
+                        passed = False
+                        failed_tests.append(test_name)
+                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                    else:
+                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+        test_class.teardown()
+        return test_count
+    
+
     def setup(self):
         """ This method is called before every test run """
         self.container = self._start_container(self.image_id)
@@ -277,12 +304,10 @@ class DockerTest(object):
         this_module_path =  os.path.dirname(inspect.getfile(self.__class__))
         sys.path.append(this_module_path)
         results = {}
-        test_files = {}
         passed = True
 
         # Simple stats
         test_count = 0
-        failed_tests = []
 
         if self.tests:
             self._log("Using user provided test location: %s" % self.tests, logging.DEBUG)
@@ -291,40 +316,22 @@ class DockerTest(object):
             self._log("Using default test location: %s" % self.test_file_pattern, logging.DEBUG)
             tests_pattern = self.test_file_pattern
 
-        tests_patterns = {}
-
         for path in tests_pattern.split(','):
-            dirname = os.path.dirname(path)
-            pattern = os.path.basename(path)
-
+            dirname, pattern = path.rsplit("/",1)
+            # If we get only pattern we use CWD to find classes
             if not dirname:
                 dirname = os.getcwd()
-
-            # First pattern in the selected directory
-            if not dirname in tests_patterns:
-                tests_patterns[dirname] = []
-
-            tests_patterns[dirname].append(pattern)
-
-        for dirname, patterns in tests_patterns.iteritems():
-            patterns = sorted(set(patterns))
-
+                
             for root, dirs, files in os.walk(dirname):
                 # Skip the Git directory itself
                 if ".git" in root:
                     continue
-
-                test_files = []
-
-                for pattern in patterns:
-                    test_files = test_files + fnmatch.filter(files, pattern)
-
-                for filename in test_files:
+                for filename in fnmatch.filter(files, pattern):
                     test_file =  os.path.join(root, filename)
                     module_marker = str(uuid.uuid4())
                     # Load class to unique namespace
                     test_module = imp.load_source(module_marker, test_file)
-
+                    
                     # Get all classes from our module
                     for name, clazz in inspect.getmembers(test_module, inspect.isclass):
                         # Check that class is from our namespace
@@ -332,30 +339,9 @@ class DockerTest(object):
                             # Instantiate class
                             cls = getattr(test_module, name)
                             test_class = cls( self.image_id, self.tests,
-                                                       self.git_repo_path, self.results_dir,
-                                                       logger=None)                            
-                    test_class.setup()
-                    self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
-                    # Loop through all methods from our class
-                    for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
-                        # Take only ones which name starts with "test_"
-                        if test_name.startswith("test_"):
-                            self._log("Running test '%s'" % test_name, logging.INFO)
-                            test_count += 1
-                            try:
-                                test_result =  test()
-                            except Exception as ex:
-                                results[test_name] = traceback.format_exc()
-                                passed = False
-                            else:
-                                results[test_name] = test_result
-                                if test_result is False:
-                                    passed = False
-                                    failed_tests.append(test_name)
-                                    self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
-                                else:
-                                    self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-                    test_class.teardown()
+                                              self.git_repo_path, self.results_dir,
+                                              logger=None)
+                            test_count += self._run_tests_from_class(test_class, results)
 
         if test_count > 0:
             if passed:
