@@ -339,7 +339,7 @@ class DockerTest(object):
             else:
                 
                 self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
-                self._log("Failed tests: %s" % failed_tests.items(), logging.ERROR)
+                self._log("Failed tests: %s" % failed_tests.keys(), logging.ERROR)
 
         self._generate_xunit_file(results)
         return results, not bool(failed_tests)
