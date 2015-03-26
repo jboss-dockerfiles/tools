@@ -181,10 +181,13 @@ class DockerTest(object):
 
             # TODO: needs refactor
             for message in messages:
-                self._log("Trying to find message '%s' in logs..." % message, logging.DEBUG)
-                if message in logs and message not in found_messages:
+                if message not in logs:
+                    self._log("Message '%s' not found in logs yet..." % message, logging.DEBUG)
+                    continue
+
+                if message not in found_messages:
                    found_messages.append(message)
-                   self._log("Message '%s' was found in the logs" % message, logging.INFO)
+                   self._log("Message '%s' was found in logs" % message, logging.INFO)
 
             # TODO: Add customization option for sleep time
             time.sleep(1)
