@@ -96,7 +96,7 @@ class DockerTest(object):
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
         """
-        with open('container_output.txt', 'w') as f:
+        with open(self.results_dir + '/container_' + container.get('Id') + 'output.txt', 'w') as f:
             print(d.attach(container=container.get('Id'), stream=False, logs=True), file=f)
         f.closed
         if container:
