@@ -86,7 +86,7 @@ class DockerTest(object):
     def _start_container(self, image, environment = {}):
         """ Starts a detached container for selected image """
         self._log("Creating container from image '%s'..." % image, logging.DEBUG)
-        container = d.create_container(image=image, environment, detach=True)
+        container = d.create_container(image=image, environment=environment, detach=True)
         self._log("Starting container '%s'..." % container.get('Id'), logging.DEBUG)
         d.start(container=container)
         return container
