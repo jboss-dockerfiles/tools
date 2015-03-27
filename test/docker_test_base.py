@@ -83,10 +83,10 @@ class DockerTest(object):
             os.mkdir(self.results_dir)
         tree.write(self.results_dir +  "/mw_test_out.xml")
 
-    def _start_container(self, image):
+    def _start_container(self, image, environment = {}):
         """ Starts a detached container for selected image """
         self._log("Creating container from image '%s'..." % image, logging.DEBUG)
-        container = d.create_container(image=image, detach=True)
+        container = d.create_container(image=image, environment, detach=True)
         self._log("Starting container '%s'..." % container.get('Id'), logging.DEBUG)
         d.start(container=container)
         return container
