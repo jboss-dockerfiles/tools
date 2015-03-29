@@ -43,8 +43,7 @@ from docker import Client
 
 d = Client()
 
-class DockerTest(object):
-    """ Base class for all Docker integration tests """
+class DockerTestRunner(object):
 
     def __init__(self, image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
         self.test_file_pattern = "test_*py"
@@ -53,18 +52,40 @@ class DockerTest(object):
         self.git_repo_path = git_repo_path
         self.results_dir = results_dir
         self.kwargs = kwargs
-
         if logger:
             self.logger = logger
         else:
-            self.logger = logging.getLogger("dock.middleware")
-     
+            self.logger = logging.getLogger("dock.middleware.runner")
+
     def _log(self, m, level=logging.INFO):
         """ log using logger, or print to stdout """
         if self.logger:
             self.logger.log(level, m)
         else:
             print(m)
+
+    def _run_tests_from_class(self, test_class,  results):
+        test_class.setUpClass()
+        self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
+        # Loop through all methods from our class
+        for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
+            # Take only ones which name starts with "test_"
+            if test_name.startswith("test_"):
+                self._log("Running test '%s'" % test_name, logging.INFO)
+                try:
+                    test_class.setup()
+                    test_result = test()
+                    test_class.teardown()
+                except Exception as ex:
+                    self._log(traceback.format_exc())
+                    results[test_name] = traceback.format_exc()
+                else:
+                    results[test_name] = test_result
+                    if test_result is False:
+                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                    else:
+                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+        test_class.teardownClass()    
 
     def _generate_xunit_file(self, results):
         root = ET.Element("testsuite", name="mw_docker_tests")
@@ -79,46 +100,6 @@ class DockerTest(object):
         except:
             os.mkdir(self.results_dir)
         tree.write(self.results_dir +  "/mw_test_out.xml")
-
- 
-    def _run_tests_from_class(self, test_class,  results):
-        test_class.setUpClass()
-        self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
-        # Loop through all methods from our class
-        for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
-            # Take only ones which name starts with "test_"
-            if test_name.startswith("test_"):
-                self._log("Running test '%s'" % test_name, logging.INFO)
-                try:
-                    test_class.setup()
-                    test_result =  test()
-                    test_class.teardown()
-                except Exception as ex:
-                    self._log(traceback.format_exc())
-                    results[test_name] = traceback.format_exc()
-                else:
-                    results[test_name] = test_result
-                    if test_result is False:
-                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
-                    else:
-                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-        test_class.teardownClass()
-    
-    def setup(self):
-        """ This method is called before every test run """
-        pass
-
-    def setUpClass(self):
-        """ This method is called when test class is setuped """
-        self.container = Container(self.image_id)
-        self.container.start()
-        
-    def teardown(self):
-        """ Called after every test run """
-        pass
-
-    def teardownClass(self):
-        self.container.stop(directory=self.results_dir)
 
     def run(self):
         """ Entry point, run all tests and return results """
@@ -156,9 +137,7 @@ class DockerTest(object):
                         if module_marker == clazz.__module__:
                             # Instantiate class
                             cls = getattr(test_module, name)
-                            test_class = cls( self.image_id, self.tests,
-                                              self.git_repo_path, self.results_dir,
-                                              logger=None)
+                            test_class = cls(runner=self, logger=None)
                             self._run_tests_from_class(test_class, results)
 
             failed_tests = {k:v for (k,v) in results.items() if results[k] is False}
@@ -166,17 +145,54 @@ class DockerTest(object):
             if not failed_tests:
                 self._log("==> Summary: All tests passed!", logging.INFO)
             else:
-                
                 self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
                 self._log("Failed tests: %s" % failed_tests.keys(), logging.ERROR)
 
         self._generate_xunit_file(results)
         return results, not bool(failed_tests)
 
+        
+class DockerTest(object):
+    """ 
+    Base class for all Docker integration tests 
+    Its purpose is to emulate abstract class for CE tests
+
+
+    """
+    def __init__(self, runner, logger=None, **kwargs):
+        self.runner = runner
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger("dock.middleware.base")
+     
+    def _log(self, m, level=logging.INFO):
+        """ log using logger, or print to stdout """
+        if self.logger:
+            self.logger.log(level, m)
+        else:
+            print(m)
+  
+    def setup(self):
+        """ This method is called before every test run """
+        pass
+
+    def setUpClass(self):
+        """ This method is called when test class is setuped """
+        self.container = Container(self.runner.image_id)
+        self.container.start()
+        
+    def teardown(self):
+        """ Called after every test run """
+        pass
+
+    def teardownClass(self):
+        self.container.stop(directory=self.runner.results_dir)
+
 
 class Container(object):
     """
-    Object representing test container, it is used in tests
+    Object representing a docker test container, it is used in tests
     """
     
     def __init__(self, image_id, name=None):
@@ -213,5 +229,5 @@ class Container(object):
 
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
-    e = DockerTest(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
+    e = DockerTestRunner(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
     return e.run()
