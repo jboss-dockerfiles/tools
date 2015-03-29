@@ -85,7 +85,7 @@ class DockerTestRunner(object):
                         self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
                     else:
                         self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-        test_class.teardownClass()    
+        test_class.teardownClass()
 
     def _generate_xunit_file(self, results):
         root = ET.Element("testsuite", name="mw_docker_tests")
@@ -120,7 +120,7 @@ class DockerTestRunner(object):
             # If we get only pattern we use CWD to find classes
             if not dirname:
                 dirname = os.getcwd()
-                
+
             for root, dirs, files in os.walk(dirname):
                 # Skip the Git directory itself
                 if ".git" in root:
@@ -130,7 +130,7 @@ class DockerTestRunner(object):
                     module_marker = str(uuid.uuid4())
                     # Load class to unique namespace
                     test_module = imp.load_source(module_marker, test_file)
-                    
+
                     # Get all classes from our module
                     for name, clazz in inspect.getmembers(test_module, inspect.isclass):
                         # Check that class is from our namespace
@@ -151,13 +151,11 @@ class DockerTestRunner(object):
         self._generate_xunit_file(results)
         return results, not bool(failed_tests)
 
-        
+
 class DockerTest(object):
-    """ 
-    Base class for all Docker integration tests 
+    """
+    Base class for all Docker integration tests
     Its purpose is to emulate abstract class for CE tests
-
-
     """
     def __init__(self, runner, logger=None, **kwargs):
         self.runner = runner
@@ -165,14 +163,14 @@ class DockerTest(object):
             self.logger = logger
         else:
             self.logger = logging.getLogger("dock.middleware.base")
-     
+
     def _log(self, m, level=logging.INFO):
         """ log using logger, or print to stdout """
         if self.logger:
             self.logger.log(level, m)
         else:
             print(m)
-  
+
     def setup(self):
         """ This method is called before every test run """
         pass
@@ -181,7 +179,7 @@ class DockerTest(object):
         """ This method is called when test class is setuped """
         self.container = Container(self.runner.image_id)
         self.container.start()
-        
+
     def teardown(self):
         """ Called after every test run """
         pass
@@ -194,7 +192,7 @@ class Container(object):
     """
     Object representing a docker test container, it is used in tests
     """
-    
+
     def __init__(self, image_id, name=None):
         self.image_id = image_id
         self.container = None
@@ -202,30 +200,33 @@ class Container(object):
         self.ip_address = None
         self.logger = logging.getLogger("dock.middleware.container")
 
-    def start(self, env = {}):
+    def start(self, environment = {}):
         """ Starts a detached container for selected image """
         self.logger.debug("Creating container from image '%s'..." % self.image_id)
-        self.container = d.create_container(image=self.image_id, detach=True)
+        self.container = d.create_container(image=self.image_id, environment=environment, detach=True)
         self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
         d.start(container=self.container)
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
-        
-    def stop(self, directory="target", save_output=True):
+
+    def stop(self, directory="target", mark_output=False, save_output=True):
         """
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
         """
-        with open('container_output.txt', 'w') as f:
-            print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
-        f.closed
+        if save_output:
+            if mark_output:
+                out_path = directory + "container_" + self.name + "_" + self.container.get('Id') + "_output.txt"
+            else:
+                out_path = directory + "container_" + self.container.get('Id') + "output.txt"
+            with open(out_path, 'w') as f:
+                print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
+            f.closed
         if self.container:
             self.logger.debug("Removing container '%s'" % self.container['Id'])
             d.kill(container=self.container)
             d.remove_container(self.container)
         else:
             self.logger.debug("no container to tear down")
-    
-
 
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
