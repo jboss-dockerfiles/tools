@@ -230,6 +230,8 @@ class Container(object):
         else:
             self.logger.debug("no container to tear down")
 
+    def execute(self, cmd):
+        return d.execute(self.container, cmd=cmd)
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
     e = DockerTestRunner(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
