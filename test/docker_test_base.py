@@ -33,9 +33,6 @@ import json
 import logging
 import os
 import re
-import requests
-import select
-import subprocess
 import sys
 import time
 import traceback
@@ -46,8 +43,7 @@ from docker import Client
 
 d = Client()
 
-class DockerTest(object):
-    """ Base class for all Docker integration tests """
+class DockerTestRunner(object):
 
     def __init__(self, image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
         self.test_file_pattern = "test_*py"
@@ -60,14 +56,37 @@ class DockerTest(object):
         if logger:
             self.logger = logger
         else:
-            self.logger = logging.getLogger("dock.middleware")
-     
+            self.logger = logging.getLogger("dock.middleware.runner")
+
     def _log(self, m, level=logging.INFO):
         """ log using logger, or print to stdout """
         if self.logger:
             self.logger.log(level, m)
         else:
             print(m)
+
+    def _run_tests_from_class(self, test_class,  results):
+        test_class.setUpClass()
+        self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
+        # Loop through all methods from our class
+        for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
+            # Take only ones which name starts with "test_"
+            if test_name.startswith("test_"):
+                self._log("Running test '%s'" % test_name, logging.INFO)
+                try:
+                    test_class.setup()
+                    test_result = test()
+                    test_class.teardown()
+                except Exception as ex:
+                    self._log(traceback.format_exc())
+                    results[test_name] = traceback.format_exc()
+                else:
+                    results[test_name] = test_result
+                    if test_result is False:
+                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                    else:
+                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+        test_class.teardownClass()
 
     def _generate_xunit_file(self, results):
         root = ET.Element("testsuite", name="mw_docker_tests")
@@ -82,216 +101,6 @@ class DockerTest(object):
         except:
             os.mkdir(self.results_dir)
         tree.write(self.results_dir +  "/mw_test_out.xml")
-
-    def _start_container(self, image, environment = {}):
-        """ Starts a detached container for selected image """
-        self._log("Creating container from image '%s'..." % image, logging.DEBUG)
-        container = d.create_container(image=image, environment=environment, detach=True)
-        self._log("Starting container '%s'..." % container.get('Id'), logging.DEBUG)
-        d.start(container=container)
-        return container
-
-    def _stop_container(self, container):
-        """
-        Stops (and removes) selected container.
-        Additionally saves the STDOUT output to a `container_output` file for later investigation.
-        """
-        with open(self.results_dir + '/container_' + container.get('Id') + 'output.txt', 'w') as f:
-            print(d.attach(container=container.get('Id'), stream=False, logs=True), file=f)
-        f.closed
-        if container:
-            self._log("Removing container '%s'" % container['Id'], logging.DEBUG)
-            d.kill(container=container)
-            d.remove_container(container)
-        else:
-            self._log("no container to tear down", logging.DEBUG)
-
-    def _handle_request(self, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None):
-        """
-        Helper method to determine if the container is listetning on specific port
-        and returning the exected status code. If the 'expected_phrase' parameter
-        is specified, it additionally checks if the response body contains the
-        specified string.
-
-        By default it assumes that we are checking port 80 for return code 200.
-        """
-        self._log("Checking if the container is returning status code %s on port %s" % (expected_status_code, port), logging.INFO)
-
-        success = False
-        start_time = time.time()
-
-        ip = d.inspect_container(container=self.container)['NetworkSettings']['IPAddress']
-        latest_status_code = 0
-
-        while time.time() < start_time + wait:
-            try:
-                response = requests.get('http://%s:%s' % (ip, port), timeout = timeout, stream=False)
-            except Exception as ex:
-                # Logging as warning, bcause this does not neccessarily means
-                # something bad. For example the server did not boot yet.
-                self._log("Exception caught: %s" % repr(ex), logging.WARN)
-            else:
-                latest_status_code = response.status_code
-                self._log("Response code from the container on port %s: %s (expected: %s)" % (port, latest_status_code, expected_status_code), logging.DEBUG)
-                if latest_status_code == expected_status_code:
-                    if not expected_phrase:
-                        # The expected_phrase parameter was not set
-                        success = True
-                        break
-
-                    if expected_phrase in response.text:
-                        # The expected_phrase parameter was found in the body
-                        self._log("Document body contains the '%s' phrase!" % expected_phrase, logging.INFO)
-                        success = True
-                    else:
-                        # The phrase was not found in the response
-                        self._log("Failure! Correct status code received but the document body does not contain the '%s' phrase!" % expected_phrase, logging.ERROR)
-                        self._log("Received body:\n%s" % response.text, logging.DEBUG)
-
-                    break
-
-            time.sleep(1)
-
-        return success
-
-    def _expect_message(self, image_or_container, messages):
-        """
-        This is a helper method to scan the container logs for specific messages.
-        Returns True if all messages were fond, False otherwise.
-        """
-        found = True
-
-        # Start a container if necessary
-        # TODO: move this to a helper method so it can be reused
-        # (ensuring that we stop and remove the container afterwards)
-        if isinstance(image_or_container, basestring):
-            container = self._start_container(image_or_container)
-        else:
-            container = image_or_container
-
-        found_messages = []
-        start_time = time.time()
-
-        # TODO: Add customization option for timeout
-        while time.time() < start_time + 30:
-            if len(messages) == len(found_messages):
-                break
-
-            logs = d.attach(container=container.get('Id'), stream=False, logs=True)
-
-            # TODO: needs refactor
-            for message in messages:
-                if message not in logs:
-                    self._log("Message '%s' not found in logs yet..." % message, logging.DEBUG)
-                    continue
-
-                if message not in found_messages:
-                   found_messages.append(message)
-                   self._log("Message '%s' was found in logs" % message, logging.INFO)
-
-            # TODO: Add customization option for sleep time
-            time.sleep(1)
-
-        # Stop the container if we started it
-        # TODO: This feels a bit weird, fix it?
-        if isinstance(image_or_container, basestring):
-            self._stop_container(container)
-
-        if len(messages) == len(found_messages):
-            self._log("All messages (%s) found in the logs!" % messages, logging.INFO)
-            return True
-        else:
-            for m in messages:
-                if m not in found_messages:
-                    self._log("Message '%s' was found in the logs" % m, logging.ERROR)
-
-        return False
-
-    def _execute(self, command, **kwargs):
-        """
-        Helper method to execute a shell command and redirect the logs to logger
-        with proper log level.
-        """
-
-        self._log("Executing '%s' command..." % command, logging.DEBUG)
-
-        try:
-            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
-
-            levels = {
-                process.stdout: logging.DEBUG,
-                process.stderr: logging.ERROR
-            }
-
-            def read_output():
-                ready = select.select([process.stdout, process.stderr], [], [], 1000)[0]
-                read = False
-                for output in ready:
-                    line = output.readline()[:-1]
-                    if line:
-                      self._log(line, levels[output])
-                      read = True
-                return read
-
-            while True:
-              if not read_output():
-                break
-
-            process.wait()
-        except subprocess.CalledProcessError as e:
-            self._log("Command '%s' failed, check logs" % command, logging.ERROR)
-            return False
-
-        return True
-
-    def _sti_build(self, application, **args):
-        """
-        This is a helper method that executes a build with STI tool.
-        If the build is successful it returns the image ID, None otherwise.
-        """
-        # TODO: extend args with loglevel
-
-        # Resulting image ID
-        image_id = "integ-" + self.image_id
-        command = "sti build --loglevel=5 --forcePull=false --contextDir=%s %s %s %s" % (args.get('path', '.'), application, self.image_id, image_id)
-
-        self._log("Executing new STI build...", logging.INFO)
-
-        if self._execute(command):
-            self._log("STI build succeeded, image %s was built" % image_id, logging.INFO)
-            return image_id
-
-        self._log("STI build failed, check logs!" % logging.ERROR)
-        return None
-
-    def _run_tests_from_class(self, test_class,  results):
-        test_class.setup()
-        self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
-        # Loop through all methods from our class
-        for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
-            # Take only ones which name starts with "test_"
-            if test_name.startswith("test_"):
-                self._log("Running test '%s'" % test_name, logging.INFO)
-                try:
-                    test_result =  test()
-                except Exception as ex:
-                    results[test_name] = traceback.format_exc()
-                else:
-                    results[test_name] = test_result
-                    if test_result is False:
-                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
-                    else:
-                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-        test_class.teardown()
-    
-    def setup(self):
-        """ This method is called before every test run """
-        self.container = self._start_container(self.image_id)
-
-    def teardown(self):
-        """ Called after every test run """
-        self._stop_container(self.container)
-        self.container = None
 
     def run(self):
         """ Entry point, run all tests and return results """
@@ -312,7 +121,7 @@ class DockerTest(object):
             # If we get only pattern we use CWD to find classes
             if not dirname:
                 dirname = os.getcwd()
-                
+
             for root, dirs, files in os.walk(dirname):
                 # Skip the Git directory itself
                 if ".git" in root:
@@ -322,16 +131,14 @@ class DockerTest(object):
                     module_marker = str(uuid.uuid4())
                     # Load class to unique namespace
                     test_module = imp.load_source(module_marker, test_file)
-                    
+
                     # Get all classes from our module
                     for name, clazz in inspect.getmembers(test_module, inspect.isclass):
                         # Check that class is from our namespace
                         if module_marker == clazz.__module__:
                             # Instantiate class
                             cls = getattr(test_module, name)
-                            test_class = cls( self.image_id, self.tests,
-                                              self.git_repo_path, self.results_dir,
-                                              logger=None)
+                            test_class = cls(runner=self, logger=None)
                             self._run_tests_from_class(test_class, results)
 
             failed_tests = {k:v for (k,v) in results.items() if results[k] is False}
@@ -347,7 +154,83 @@ class DockerTest(object):
         return results, not bool(failed_tests)
 
 
+class DockerTest(object):
+    """
+    Base class for all Docker integration tests
+    Its purpose is to emulate abstract class for CE tests
+    """
+    def __init__(self, runner, logger=None, **kwargs):
+        self.runner = runner
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger("dock.middleware.base")
+
+    def _log(self, m, level=logging.INFO):
+        """ log using logger, or print to stdout """
+        if self.logger:
+            self.logger.log(level, m)
+        else:
+            print(m)
+
+    def setup(self):
+        """ This method is called before every test run """
+        pass
+
+    def setUpClass(self):
+        """ This method is called when test class is setuped """
+        self.container = Container(self.runner.image_id)
+        self.container.start()
+
+    def teardown(self):
+        """ Called after every test run """
+        pass
+
+    def teardownClass(self):
+        self.container.stop(directory=self.runner.results_dir)
+
+
+class Container(object):
+    """
+    Object representing a docker test container, it is used in tests
+    """
+
+    def __init__(self, image_id, name=None):
+        self.image_id = image_id
+        self.container = None
+        self.name = None
+        self.ip_address = None
+        self.logger = logging.getLogger("dock.middleware.container")
+
+    def start(self, environment = {}):
+        """ Starts a detached container for selected image """
+        self.logger.debug("Creating container from image '%s'..." % self.image_id)
+        self.container = d.create_container(image=self.image_id, environment=environment, detach=True)
+        self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
+        d.start(container=self.container)
+        self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
+
+    def stop(self, directory="target", mark_output=False, save_output=True):
+        """
+        Stops (and removes) selected container.
+        Additionally saves the STDOUT output to a `container_output` file for later investigation.
+        """
+        if save_output:
+            if mark_output:
+                out_path = directory + "container_" + self.name + "_" + self.container.get('Id') + "_output.txt"
+            else:
+                out_path = directory + "container_" + self.container.get('Id') + "output.txt"
+            with open(out_path, 'w') as f:
+                print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
+            f.closed
+        if self.container:
+            self.logger.debug("Removing container '%s'" % self.container['Id'])
+            d.kill(container=self.container)
+            d.remove_container(self.container)
+        else:
+            self.logger.debug("no container to tear down")
+
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
-    e = DockerTest(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
+    e = DockerTestRunner(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
     return e.run()
