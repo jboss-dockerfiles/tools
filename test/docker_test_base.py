@@ -79,13 +79,13 @@ class DockerTestRunner(object):
                     test_class.teardown()
                 except Exception as ex:
                     self._log(traceback.format_exc())
-                    results[test_name] = traceback.format_exc()
+                    results[test_name] = False
                 else:
                     results[test_name] = test_result
-                    if test_result is False:
-                        self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
-                    else:
-                        self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+                if results[test_name]:
+                    self._log("==> Test '%s' passed!" % test_name, logging.INFO)
+                else:
+                    self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
         test_class.teardownClass()
 
     def _generate_xunit_file(self, results):
@@ -231,6 +231,7 @@ class Container(object):
             self.logger.debug("no container to tear down")
 
     def execute(self, cmd):
+        """ executes cmd in container and return its output """
         return d.execute(self.container, cmd=cmd)
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
