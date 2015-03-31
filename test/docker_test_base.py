@@ -79,13 +79,13 @@ class DockerTestRunner(object):
                     test_class.teardown()
                 except Exception as ex:
                     self._log(traceback.format_exc())
+
+                if test_result is not True:
+                    self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
                     results[test_name] = False
                 else:
-                    results[test_name] = test_result
-                if results[test_name]:
                     self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-                else:
-                    self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
+                    results[test_name] = True
         test_class.teardownClass()
 
     def _generate_xunit_file(self, results):
@@ -143,12 +143,11 @@ class DockerTestRunner(object):
 
             failed_tests = {k:v for (k,v) in results.items() if results[k] is False}
             passed_tests = {k:v for (k,v) in results.items() if results[k] is True}
-            if not failed_tests:
-                self._log("==> Summary: All tests passed!", logging.INFO)
-            else:
-                
-                self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
-                self._log("Failed tests: %s" % failed_tests.keys(), logging.ERROR)
+        if not failed_tests:
+            self._log("==> Summary: All tests passed!", logging.INFO)
+        else:
+            self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
+            self._log("Failed tests: %s" % failed_tests.keys(), logging.ERROR)
 
         self._generate_xunit_file(results)
         return results, not bool(failed_tests)
