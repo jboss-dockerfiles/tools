@@ -65,35 +65,44 @@ class DockerTestRunner(object):
         else:
             print(m)
 
-    def _run_tests_from_class(self, test_class,  results):
+    def _run_tests_from_class(self, test_class, results):
         test_class.setUpClass()
         self._log("Running tests from class '%s'..." % test_class.__class__.__name__, logging.INFO)
         # Loop through all methods from our class
         for test_name, test in inspect.getmembers(test_class, inspect.ismethod):
             # Take only ones which name starts with "test_"
             if test_name.startswith("test_"):
+                result = {}
+                result['name'] = test_name
                 self._log("Running test '%s'" % test_name, logging.INFO)
                 try:
+                    start_time = time.time()
                     test_class.setup()
                     test_result = test()
                     test_class.teardown()
                 except Exception as ex:
-                    self._log(traceback.format_exc())
-
+                    tb = traceback.format_exc()
+                    self._log(tb)
+                    result['exception'] = tb
+                else:
+                    result['exception'] = "test failed!"
+                result['time'] = time.time() - start_time
+                results.append(result)
                 if test_result is not True:
                     self._log("==> Test '%s' failed!" % test_name, logging.ERROR)
-                    results[test_name] = False
+                    result['status'] = False
                 else:
                     self._log("==> Test '%s' passed!" % test_name, logging.INFO)
-                    results[test_name] = True
+                    result['status'] = True
         test_class.teardownClass()
 
     def _generate_xunit_file(self, results):
         root = ET.Element("testsuite", name="mw_docker_tests")
-        for test, result in results.items():
-            doc = ET.SubElement(root, "testcase", classname=test, name=test)
-            if (not result):
-                ET.SubElement(doc, "failure", message="error occured")
+        for test_result in results:
+            testcase = ET.SubElement(root, "testcase", classname="DockerTest", name=test_result['name'],
+                                time=str(round(test_result['time'], 2)))
+            if not test_result['status']:
+                ET.SubElement(testcase, "failure", message=test_result['exception'])
         tree = ET.ElementTree(root)
         self._log("Creating results dir: " + self.results_dir )
         try:
@@ -107,7 +116,7 @@ class DockerTestRunner(object):
         # just hacky to have this module on path
         this_module_path =  os.path.dirname(inspect.getfile(self.__class__))
         sys.path.append(this_module_path)
-        results = {}
+        results = []
 
         if self.tests:
             self._log("Using user provided test location: %s" % self.tests, logging.DEBUG)
@@ -141,14 +150,13 @@ class DockerTestRunner(object):
                             test_class = cls(runner=self, logger=None)
                             self._run_tests_from_class(test_class, results)
 
-            failed_tests = {k:v for (k,v) in results.items() if results[k] is False}
-            passed_tests = {k:v for (k,v) in results.items() if results[k] is True}
+            failed_tests = {i['name'] for i in results if i['status'] is False}
+            passed_tests = {i['name'] for i in results if i['status'] is True}
         if not failed_tests:
             self._log("==> Summary: All tests passed!", logging.INFO)
         else:
-            self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results.items())), logging.ERROR)
-            self._log("Failed tests: %s" % failed_tests.keys(), logging.ERROR)
-
+            self._log("==> Summary: %s of %s tests failed!" % (len(failed_tests), len(results)), logging.ERROR)
+            self._log("Failed tests: %s" % failed_tests, logging.ERROR)
         self._generate_xunit_file(results)
         return results, not bool(failed_tests)
 
