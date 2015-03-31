@@ -201,10 +201,10 @@ class Container(object):
         self.ip_address = None
         self.logger = logging.getLogger("dock.middleware.container")
 
-    def start(self, environment = {}):
+    def start(self, **kwargs):
         """ Starts a detached container for selected image """
         self.logger.debug("Creating container from image '%s'..." % self.image_id)
-        self.container = d.create_container(image=self.image_id, environment=environment, detach=True)
+        self.container = d.create_container(image=self.image_id, detach=True, **kwargs)
         self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
         d.start(container=self.container)
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
