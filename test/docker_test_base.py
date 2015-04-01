@@ -79,9 +79,9 @@ class DockerTestRunner(object):
                 self._log("Running test '%s'" % test_name, logging.INFO)
                 try:
                     start_time = time.time()
-                    test_class.setup()
+                    test_class.setup(test_name)
                     test_result = test()
-                    test_class.teardown()
+                    test_class.teardown(test_name)
                 except Exception as ex:
                     test_result = False
                     result['message'] = str(ex.message)
@@ -177,16 +177,16 @@ class DockerTest(object):
         else:
             print(m)
 
-    def setup(self):
+    def setup(self, test_name = None):
         """ This method is called before every test run """
         pass
 
     def setUpClass(self):
         """ This method is called when test class is setuped """
-        self.container = Container(self.runner.image_id)
+        self.container = Container(self.runner.image_id, name=self.__class__.__name__)
         self.container.start()
 
-    def teardown(self):
+    def teardown(self, test_name = None):
         """ Called after every test run """
         pass
 
@@ -202,7 +202,7 @@ class Container(object):
     def __init__(self, image_id, name=None):
         self.image_id = image_id
         self.container = None
-        self.name = None
+        self.name = name
         self.ip_address = None
         self.logger = logging.getLogger("dock.middleware.container")
 
@@ -214,16 +214,15 @@ class Container(object):
         d.start(container=self.container)
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
 
-    def stop(self, directory="target", mark_output=False, save_output=True, remove_image = False):
+    def stop(self, directory="target", save_output=True, remove_image = False):
         """
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
         """
         if save_output:
-            if mark_output:
-                out_path = directory + "container_" + self.name + "_" + self.container.get('Id') + "_output.txt"
-            else:
-                out_path = directory + "container_" + self.container.get('Id') + "output.txt"
+            if not self.name:
+                self.name = self.container.get('Id')
+            out_path = directory + "/output-" + self.name + ".txt"
             with open(out_path, 'w') as f:
                 print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
             f.closed
