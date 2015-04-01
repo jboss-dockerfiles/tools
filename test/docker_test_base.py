@@ -73,6 +73,7 @@ class DockerTestRunner(object):
             # Take only ones which name starts with "test_"
             if test_name.startswith("test_"):
                 result = {}
+                result['class'] = test_class.__class__.__name__
                 result['name'] = test_name
                 self._log("Running test '%s'" % test_name, logging.INFO)
                 try:
@@ -81,11 +82,13 @@ class DockerTestRunner(object):
                     test_result = test()
                     test_class.teardown()
                 except Exception as ex:
+                    result['message'] = ex.message
                     tb = traceback.format_exc()
                     self._log(tb)
                     result['exception'] = tb
                 else:
-                    result['exception'] = "test failed!"
+                    result['exception'] = None
+                    result['message'] = "Test Failed"
                 result['time'] = time.time() - start_time
                 results.append(result)
                 if test_result is not True:
@@ -99,10 +102,12 @@ class DockerTestRunner(object):
     def _generate_xunit_file(self, results):
         root = ET.Element("testsuite", name="mw_docker_tests")
         for test_result in results:
-            testcase = ET.SubElement(root, "testcase", classname="DockerTest", name=test_result['name'],
+            testcase = ET.SubElement(root, "testcase", classname=test_result['class'], name=test_result['name'],
                                 time=str(round(test_result['time'], 2)))
             if not test_result['status']:
-                ET.SubElement(testcase, "failure", message=test_result['exception'])
+                test_error = ET.SubElement(testcase, "failure", message=test_result['message'], )
+                if test_result['exception'] is not None:
+                    test_error.text = test_result['exception']
         tree = ET.ElementTree(root)
         self._log("Creating results dir: " + self.results_dir )
         try:
