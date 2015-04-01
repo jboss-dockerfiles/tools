@@ -83,7 +83,8 @@ class DockerTestRunner(object):
                     test_result = test()
                     test_class.teardown()
                 except Exception as ex:
-                    result['message'] = ex.message
+                    test_result = False
+                    result['message'] = str(ex.message)
                     tb = traceback.format_exc()
                     self._log(tb)
                     result['exception'] = tb
@@ -213,7 +214,7 @@ class Container(object):
         d.start(container=self.container)
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
 
-    def stop(self, directory="target", mark_output=False, save_output=True):
+    def stop(self, directory="target", mark_output=False, save_output=True, remove_image = False):
         """
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
@@ -230,12 +231,18 @@ class Container(object):
             self.logger.debug("Removing container '%s'" % self.container['Id'])
             d.kill(container=self.container)
             d.remove_container(self.container)
+            if remove_image:
+                self.remove_image()
         else:
-            self.logger.debug("no container to tear down")
+            self.logger.debug("No container to tear down")
 
     def execute(self, cmd):
         """ executes cmd in container and return its output """
         return d.execute(self.container, cmd=cmd)
+
+    def remove_image(self, force = False):
+        self.logger.info("Removing image %s" % self.image_id)
+        d.remove_image(image = self.image_id, force= force)
 
 def run(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs):
     e = DockerTestRunner(image_id, tests, git_repo_path, results_dir, logger=None, **kwargs)
