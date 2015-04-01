@@ -37,6 +37,7 @@ import sys
 import time
 import traceback
 import uuid
+import glob
 import xml.etree.cElementTree as ET
 
 from docker import Client
@@ -130,33 +131,23 @@ class DockerTestRunner(object):
             self._log("Using default test location: %s" % self.test_file_pattern, logging.DEBUG)
             tests_pattern = self.test_file_pattern
 
-        for path in tests_pattern.split(','):
-            dirname, pattern = path.rsplit("/",1)
-            # If we get only pattern we use CWD to find classes
-            if not dirname:
-                dirname = os.getcwd()
+        for pattern in tests_pattern.split(','):
+           for test_file in glob.glob(pattern):
+                module_marker = str(uuid.uuid4())
+                # Load class to unique namespace
+                test_module = imp.load_source(module_marker, test_file)
 
-            for root, dirs, files in os.walk(dirname):
-                # Skip the Git directory itself
-                if ".git" in root:
-                    continue
-                for filename in fnmatch.filter(files, pattern):
-                    test_file =  os.path.join(root, filename)
-                    module_marker = str(uuid.uuid4())
-                    # Load class to unique namespace
-                    test_module = imp.load_source(module_marker, test_file)
+                # Get all classes from our module
+                for name, clazz in inspect.getmembers(test_module, inspect.isclass):
+                    # Check that class is from our namespace
+                    if module_marker == clazz.__module__:
+                        # Instantiate class
+                        cls = getattr(test_module, name)
+                        test_class = cls(runner=self, logger=None)
+                        self._run_tests_from_class(test_class, results)
 
-                    # Get all classes from our module
-                    for name, clazz in inspect.getmembers(test_module, inspect.isclass):
-                        # Check that class is from our namespace
-                        if module_marker == clazz.__module__:
-                            # Instantiate class
-                            cls = getattr(test_module, name)
-                            test_class = cls(runner=self, logger=None)
-                            self._run_tests_from_class(test_class, results)
-
-            failed_tests = {i['name'] for i in results if i['status'] is False}
-            passed_tests = {i['name'] for i in results if i['status'] is True}
+        failed_tests = {i['name'] for i in results if i['status'] is False}
+        passed_tests = {i['name'] for i in results if i['status'] is True}
         if not failed_tests:
             self._log("==> Summary: All tests passed!", logging.INFO)
         else:
