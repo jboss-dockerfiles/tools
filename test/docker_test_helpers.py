@@ -116,7 +116,7 @@ def _expect_message(container, messages):
     else:
         for m in messages:
             if m not in found_messages:
-                logger.error("Message '%s' was found in the logs" % m)
+                logger.error("Message '%s' was not found in the logs" % m)
 
     return False
 
