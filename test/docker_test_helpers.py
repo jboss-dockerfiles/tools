@@ -178,3 +178,16 @@ def _sti_build(base_image_id, application, **args):
     logger.error("STI build failed, check logs!")
     return None
 
+def _run_command_expect_message(cmd, find, container, wait=30):
+    """Helper routine for running a command in a container and inspecting
+       the result."""
+    start_time = time.time()
+    while time.time() < start_time + wait:
+        output = container.execute(cmd)
+        # in an ideal world we'd check the return code of the command, but
+        # docker python client library doesn't provide us with that, so we
+        # instead look for a predictable string in the output
+        if output.find(find) >= 0:
+            return True
+        time.sleep(1)
+    return False
