@@ -179,7 +179,7 @@ def _sti_build(base_image_id, application, **args):
     logger.error("STI build failed, check logs!")
     return None
 
-def _run_command_expect_message(cmd, find, container, wait=30):
+def run_command_expect_message(container, cmd, find, wait=30):
     """Helper routine for running a command in a container and inspecting
        the result."""
     start_time = time.time()
@@ -191,7 +191,7 @@ def _run_command_expect_message(cmd, find, container, wait=30):
         if find in output:
             return True
         time.sleep(1)
-    return False
+    raise Exception("run_command_expect_message didn't find message", output)
 
 #this decorator can be used only with our test_methods
 class sti_build(object):
