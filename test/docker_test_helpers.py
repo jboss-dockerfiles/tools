@@ -36,14 +36,15 @@ d = Client()
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def _handle_request(container, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None):
+def _handle_request(container, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None, path='/'):
     """
-    Helper method to determine if the container is listetning on specific port
-    and returning the exected status code. If the 'expected_phrase' parameter
+    Helper method to determine if the container is listening on a specific port
+    and returning the expected status code. If the 'expected_phrase' parameter
     is specified, it additionally checks if the response body contains the
     specified string.
     
-    By default it assumes that we are checking port 80 for return code 200.
+    By default it assumes that we are checking port 80 for return code 200,
+    with a path of '/'.
     """
     logger.info("Checking if the container is returning status code %s on port %s" % (expected_status_code, port))
 
@@ -55,7 +56,7 @@ def _handle_request(container, port=80, expected_status_code=200, wait=30, timeo
         
     while time.time() < start_time + wait:
         try:
-            response = requests.get('http://%s:%s' % (ip, port), timeout = timeout, stream=False)
+            response = requests.get('http://%s:%s%s' % (ip, port, path), timeout = timeout, stream=False)
         except Exception as ex:
             # Logging as warning, bcause this does not neccessarily means
             # something bad. For example the server did not boot yet.
