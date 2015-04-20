@@ -206,13 +206,18 @@ class Container(object):
         self.name = name
         self.ip_address = None
         self.logger = logging.getLogger("dock.middleware.container")
+        self.running = False
 
     def start(self, **kwargs):
         """ Starts a detached container for selected image """
+        if self.running:
+            self.logger.debug("Container is running")
+            return
         self.logger.debug("Creating container from image '%s'..." % self.image_id)
         self.container = d.create_container(image=self.image_id, detach=True, **kwargs)
         self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
         d.start(container=self.container)
+        self.running = True
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
 
     def stop(self, directory="target", save_output=True, remove_image = False):
@@ -220,7 +225,7 @@ class Container(object):
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
         """
-        if save_output:
+        if not self.running and save_output:
             if not self.name:
                 self.name = self.container.get('Id')
             out_path = directory + "/output-" + self.name + ".txt"
@@ -230,9 +235,10 @@ class Container(object):
         if self.container:
             self.logger.debug("Removing container '%s'" % self.container['Id'])
             d.kill(container=self.container)
+            self.running = False
             d.remove_container(self.container)
-            if remove_image:
-                self.remove_image()
+        if remove_image:
+            self.remove_image()
         else:
             self.logger.debug("No container to tear down")
 
