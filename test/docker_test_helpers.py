@@ -36,7 +36,7 @@ d = Client()
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def _handle_request(container, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None, path='/'):
+def handle_request(container, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None, path='/'):
     """
     Helper method to determine if the container is listening on a specific port
     and returning the expected status code. If the 'expected_phrase' parameter
@@ -48,7 +48,6 @@ def _handle_request(container, port=80, expected_status_code=200, wait=30, timeo
     """
     logger.info("Checking if the container is returning status code %s on port %s" % (expected_status_code, port))
 
-    success = False
     start_time = time.time()
 
     ip = container.ip_address
@@ -67,23 +66,19 @@ def _handle_request(container, port=80, expected_status_code=200, wait=30, timeo
             if latest_status_code == expected_status_code:
                 if not expected_phrase:
                     # The expected_phrase parameter was not set
-                    success = True
-                    break
+                    return True
 
                 if expected_phrase in response.text:
                     # The expected_phrase parameter was found in the body
                     logger.info("Document body contains the '%s' phrase!" % expected_phrase)
-                    success = True
+                    return True
                 else:
                     # The phrase was not found in the response
-                    logger.error("Failure! Correct status code received but the document body does not contain the '%s' phrase!" % expected_phrase)
-                    logger.debug("Received body:\n%s" % response.text)
-
-                break
+                    raise Exception("Failure! Correct status code received but the document body does not contain the '%s' phrase!" % expected_phrase,
+                        "Received body:\n%s" % response.text) # XXX: better diagnostics
 
         time.sleep(1)
-        
-    return success
+    raise Exception("handle_request failed", expected_status_code) # XXX: better diagnostics
 
 def _expect_message(container, messages):
     """
