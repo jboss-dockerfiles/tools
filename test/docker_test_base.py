@@ -81,7 +81,6 @@ class DockerTestRunner(object):
                     start_time = time.time()
                     test_class.setup(test_name)
                     test_result = test()
-                    test_class.teardown(test_name)
                 except Exception as ex:
                     test_result = False
                     result['message'] = str(ex.message)
@@ -91,6 +90,8 @@ class DockerTestRunner(object):
                 else:
                     result['exception'] = None
                     result['message'] = "Test Failed"
+                finally:
+                    test_class.teardown(test_name)
                 result['time'] = time.time() - start_time
                 results.append(result)
                 if test_result is not True:
