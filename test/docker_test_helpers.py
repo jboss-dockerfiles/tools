@@ -188,7 +188,7 @@ def _run_command_expect_message(cmd, find, container, wait=30):
         # in an ideal world we'd check the return code of the command, but
         # docker python client library doesn't provide us with that, so we
         # instead look for a predictable string in the output
-        if output.find(find) >= 0:
+        if find in output:
             return True
         time.sleep(1)
     return False
