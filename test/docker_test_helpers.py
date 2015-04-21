@@ -27,7 +27,7 @@ import requests
 import select
 import subprocess
 import time
-
+from docker_test_base import Container
 from docker import Client
 
 d = Client()
@@ -192,3 +192,26 @@ def _run_command_expect_message(cmd, find, container, wait=30):
             return True
         time.sleep(1)
     return False
+
+#this decorator can be used only with our test_methods
+class sti_build(object):
+    def __init__(self, application, **kwargs):
+        self.kwargs = kwargs
+        self.application = application
+
+    def __call__(self, func):
+        decorator = self
+        def wrap(self, **kwargs):
+            image_id = "integ-" + self.runner.image_id
+            command = "sti build --loglevel=5 --forcePull=false --contextDir=%s %s %s %s" % (decorator.kwargs.get('path', '.'), decorator.application, self.runner.image_id, image_id)
+            logger.debug("Executing new STI build...")
+            if _execute(command):
+                logger.debug("STI build succeeded, image %s was built" % image_id)
+            else:
+                logger.error("STI build failed, check logs!")
+            container = Container(image_id, name = func.__name__)
+            with container:
+                self.sti_container = container
+                func(self)
+            return True
+        return wrap 
