@@ -184,7 +184,8 @@ class DockerTest(object):
 
     def setUpClass(self):
         """ This method is called when test class is setuped """
-        self.container = Container(self.runner.image_id, name=self.__class__.__name__)
+        self.container = Container(self.runner.image_id, name=self.__class__.__name__,
+                                   output_dir=self.runner.results_dir)
         self.container.start()
 
     def teardown(self, test_name = None):
@@ -192,7 +193,7 @@ class DockerTest(object):
         pass
 
     def teardownClass(self):
-        self.container.stop(directory=self.runner.results_dir)
+        self.container.stop()
 
 
 class Container(object):
@@ -200,13 +201,24 @@ class Container(object):
     Object representing a docker test container, it is used in tests
     """
 
-    def __init__(self, image_id, name=None):
+    def __init__(self, image_id, name=None, remove_image = False, output_dir = "target", save_output=True, **kwargs):
         self.image_id = image_id
         self.container = None
         self.name = name
         self.ip_address = None
+        self.output_dir = output_dir
+        self.save_output = save_output
+        self.kwargs = kwargs
         self.logger = logging.getLogger("dock.middleware.container")
         self.running = False
+
+    def __enter__(self):
+        self.start(**self.kwargs)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        if self.remove_image:
+            self.remove_image()
 
     def start(self, **kwargs):
         """ Starts a detached container for selected image """
@@ -218,17 +230,18 @@ class Container(object):
         self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
         d.start(container=self.container)
         self.running = True
+        print("debug")
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
 
-    def stop(self, directory="target", save_output=True, remove_image = False):
+    def stop(self):
         """
         Stops (and removes) selected container.
         Additionally saves the STDOUT output to a `container_output` file for later investigation.
         """
-        if not self.running and save_output:
+        if self.running and self.save_output:
             if not self.name:
                 self.name = self.container.get('Id')
-            out_path = directory + "/output-" + self.name + ".txt"
+            out_path = self.output_dir + "/output-" + self.name + ".txt"
             with open(out_path, 'w') as f:
                 print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
             f.closed
@@ -237,10 +250,6 @@ class Container(object):
             d.kill(container=self.container)
             self.running = False
             d.remove_container(self.container)
-        if remove_image:
-            self.remove_image()
-        else:
-            self.logger.debug("No container to tear down")
 
     def execute(self, cmd):
         """ executes cmd in container and return its output """
