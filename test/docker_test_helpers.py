@@ -80,15 +80,15 @@ def handle_request(container, port=80, expected_status_code=200, wait=30, timeou
         time.sleep(1)
     raise Exception("handle_request failed", expected_status_code) # XXX: better diagnostics
 
-def _expect_message(container, messages):
+def expect_message(container, messages):
     """
     This is a helper method to scan the container logs for specific messages.
-    Returns True if all messages were fond, False otherwise.
+    Returns True if all messages were found, False otherwise.
     """
-    found = True     
+    found = True
     found_messages = []
     start_time = time.time()
-        
+
     # TODO: Add customization option for timeout
     while time.time() < start_time + 30:
         if len(messages) == len(found_messages):
@@ -105,7 +105,7 @@ def _expect_message(container, messages):
 
         # TODO: Add customization option for sleep time
         time.sleep(1)
-      
+
     if len(messages) == len(found_messages):
         logger.info("All messages (%s) found in the logs!" % messages)
         return True
@@ -114,7 +114,7 @@ def _expect_message(container, messages):
             if m not in found_messages:
                 logger.error("Message '%s' was not found in the logs" % m)
 
-    return False
+    raise Exception("expect_message failed", messages)
 
 def _execute(command, **kwargs):
     """
