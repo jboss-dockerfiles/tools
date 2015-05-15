@@ -33,7 +33,8 @@ from docker import Client
 d = Client()
 
 # FIXME
-logging.basicConfig(level=logging.DEBUG)
+LOG_FORMAT='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 def handle_request(container, port=80, expected_status_code=200, wait=30, timeout=0.5, expected_phrase=None, path='/'):
