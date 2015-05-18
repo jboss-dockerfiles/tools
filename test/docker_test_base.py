@@ -213,7 +213,7 @@ class Container(object):
         self.running = False
 
     def __enter__(self):
-        self.start()
+        self.start(**self.kwargs)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
@@ -230,6 +230,7 @@ class Container(object):
         self.logger.debug("Starting container '%s'..." % self.container.get('Id'))
         d.start(container=self.container)
         self.running = True
+        print("debug")
         self.ip_address =  d.inspect_container(container=self.container.get('Id'))['NetworkSettings']['IPAddress']
 
     def stop(self):
@@ -242,7 +243,7 @@ class Container(object):
                 self.name = self.container.get('Id')
             out_path = self.output_dir + "/output-" + self.name + ".txt"
             with open(out_path, 'w') as f:
-                self.logger.debug(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
+                print(d.attach(container=self.container.get('Id'), stream=False, logs=True), file=f)
             f.closed
         if self.container:
             self.logger.debug("Removing container '%s'" % self.container['Id'])
