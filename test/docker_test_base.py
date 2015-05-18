@@ -253,7 +253,8 @@ class Container(object):
 
     def execute(self, cmd):
         """ executes cmd in container and return its output """
-        return d.execute(self.container, cmd=cmd)
+        exec_res = d.exec_create(self.container, cmd=cmd)
+        return d.exec_start(exec_res)
 
     def remove_image(self, force = False):
         self.logger.info("Removing image %s" % self.image_id)
