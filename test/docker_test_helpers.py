@@ -164,7 +164,7 @@ def _sti_build(base_image_id, application, **args):
 
     # Resulting image ID
     image_id = "integ-" + base_image_id
-    command = "sti build --loglevel=5 --forcePull=false --contextDir=%s %s %s %s" % (args.get('path', '.'), application, base_image_id, image_id)
+    command = "sti build --loglevel=5 --force-pull=false --context-dir=%s %s %s %s" % (args.get('path', '.'), application, base_image_id, image_id)
 
     logger.info("Executing new STI build...")
 
@@ -199,7 +199,7 @@ class sti_build(object):
         decorator = self
         def wrap(self, **kwargs):
             image_id = "integ-" + self.runner.image_id
-            command = "sti build --loglevel=5 --forcePull=false --contextDir=%s %s %s %s" % (decorator.kwargs.get('path', '.'), decorator.application, self.runner.image_id, image_id)
+            command = "sti build --loglevel=5 --force-pull=false --context-dir=%s %s %s %s" % (decorator.kwargs.get('path', '.'), decorator.application, self.runner.image_id, image_id)
             logger.debug("Executing new STI build...")
             if _execute(command):
                 logger.debug("STI build succeeded, image %s was built" % image_id)
