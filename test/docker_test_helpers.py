@@ -27,6 +27,7 @@ import requests
 import select
 import subprocess
 import time
+import sys
 from docker_test_base import Container
 from docker import Client
 
@@ -126,27 +127,27 @@ def _execute(command, **kwargs):
     logger.debug("Executing '%s' command..." % command)
 
     try:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        process = subprocess.Popen(command, shell=True, stdout=sys.stdout, stderr=sys.stderr, **kwargs)
         
-        levels = {
-            process.stdout: logging.DEBUG,
-            process.stderr: logging.ERROR
-        }
-
-        def read_output():
-            ready = select.select([process.stdout, process.stderr], [], [], 1000)[0]
-            read = False
-            for output in ready:
-                line = output.readline()[:-1]
-                if line:
-                    # fix it
-                    logger.log(levels[output], line)
-                    read = True
-            return read
-
-        while True:
-            if not read_output():
-                break
+#        levels = {
+#            process.stdout: logging.DEBUG,
+#            process.stderr: logging.ERROR
+#        }
+#
+#        def read_output():
+#            ready = select.select([process.stdout, process.stderr], [], [], 1000)[0]
+#            read = False
+#            for output in ready:
+#                line = output.readline()[:-1]
+#                if line:
+#                    # fix it
+#                    logger.log(levels[output], line)
+#                    read = True
+#            return read
+#
+#        while True:
+#            if not read_output():
+#                break
 
         process.wait()
     except subprocess.CalledProcessError as e:
