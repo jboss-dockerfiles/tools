@@ -127,29 +127,34 @@ def _execute(command, **kwargs):
     logger.debug("Executing '%s' command..." % command)
 
     try:
-        process = subprocess.Popen(command, shell=True, stdout=sys.stdout, stderr=sys.stderr, **kwargs)
-        
-#        levels = {
-#            process.stdout: logging.DEBUG,
-#            process.stderr: logging.ERROR
-#        }
-#
-#        def read_output():
-#            ready = select.select([process.stdout, process.stderr], [], [], 1000)[0]
-#            read = False
-#            for output in ready:
-#                line = output.readline()[:-1]
-#                if line:
-#                    # fix it
-#                    logger.log(levels[output], line)
-#                    read = True
-#            return read
-#
-#        while True:
-#            if not read_output():
-#                break
+        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
-        process.wait()
+
+        levels = {
+            proc.stdout: logging.DEBUG,
+            proc.stderr: logging.ERROR
+        }
+
+        fcntl.fcntl(
+            proc.stderr.fileno(),
+            fcntl.F_SETFL,
+            fcntl.fcntl(proc.stderr.fileno(), fcntl.F_GETFL) | os.O_NONBLOCK,
+        )
+
+        fcntl.fcntl(
+            proc.stdout.fileno(),
+            fcntl.F_SETFL,
+            fcntl.fcntl(proc.stdout.fileno(), fcntl.F_GETFL) | os.O_NONBLOCK,
+        )
+
+        while proc.poll() == None:
+            readx = select.select([proc.stdout, proc.stderr], [], [])[0]
+            for output in readx:
+                line = output.readline()
+                logger.log(levels[output], line)
+
+        proc.wait()
+
     except subprocess.CalledProcessError as e:
         logger.error("Command '%s' failed, check logs" % command)
         return False
