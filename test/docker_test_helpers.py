@@ -152,7 +152,7 @@ def _execute(command, **kwargs):
         while proc.poll() == None:
             readx = select.select([proc.stdout, proc.stderr], [], [])[0]
             for output in readx:
-                line = output.readline()
+                line = output.readline()[:-1]
                 logger.log(levels[output], line)
 
         proc.wait()
